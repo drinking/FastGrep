@@ -1,7 +1,7 @@
 # FastGrep 快摘 ⚡️
 
 <p align="center">
-  <img src="FastGrep/Assets.xcassets/AppIcon.appiconset/AppIcon-512%402x.png" width="128" height="128" alt="FastGrep Icon" />
+  <img src="assets/icon.png" width="128" height="128" alt="FastGrep Icon" />
 </p>
 
 <p align="center">
@@ -60,7 +60,7 @@
 
 ### 方式一：下载预编译版本（推荐）
 
-1. 从 [GitHub Releases](https://github.com/) 下载最新的 `FastGrep-x.x.x.dmg` 安装镜像。
+1. 从 [GitHub Releases](https://github.com/drinking/FastGrep/releases) 下载最新的 `FastGrep.dmg` 安装镜像。
 2. 打开 DMG 文件，将 **FastGrep 快摘** 拖入 **Applications**（应用程序）文件夹。
 3. 在应用程序中点击打开即可在右上角状态栏看到图标。
 
@@ -77,7 +77,7 @@
 
 ```bash
 # 1. 克隆代码仓库
-git clone https://github.com/your-username/FastGrep.git
+git clone https://github.com/drinking/FastGrep.git
 cd FastGrep
 
 # 2. 编译 Release 版本

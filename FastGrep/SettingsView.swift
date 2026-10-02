@@ -1024,7 +1024,7 @@ struct SettingsView: View {
                 
                 HStack(spacing: 12) {
                     Button(action: {
-                        if let url = URL(string: "https://github.com") {
+                        if let url = URL(string: "https://github.com/drinking/FastGrep") {
                             NSWorkspace.shared.open(url)
                         }
                     }) {

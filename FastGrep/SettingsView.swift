@@ -14,6 +14,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case folder = "监控目录"
     case snippets = "常用短语"
     case hotkey = "快捷键"
+    case translation = "AI 翻译"
     case general = "通用与关于"
     
     var id: String { rawValue }
@@ -23,6 +24,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .folder: return "folder"
         case .snippets: return "text.badge.plus"
         case .hotkey: return "command"
+        case .translation: return "character.bubble.fill"
         case .general: return "gearshape.2"
         }
     }
@@ -31,11 +33,24 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @State private var selectedTab: SettingsTab = .folder
     
-    // 快捷键状态
+    // 主面板快捷键状态
     @State private var selectedKey: Key = .space
     @State private var selectedModifiers: NSEvent.ModifierFlags = [.control, .command]
-    @State private var isRecording = false
+    @State private var isRecordingMain = false
     @State private var recordedKeyEvent: String = ""
+    
+    // 剪贴板快速翻译快捷键状态
+    @State private var selectedTranslationKey: Key = .t
+    @State private var selectedTranslationModifiers: NSEvent.ModifierFlags = [.control, .option]
+    @State private var isRecordingTranslation = false
+    @State private var recordedTranslationKeyEvent: String = ""
+    
+    // AI 翻译状态
+    @ObservedObject private var translationService = OllamaTranslationService.shared
+    @State private var ollamaEndpointInput: String = ""
+    @State private var ollamaModelInput: String = ""
+    @State private var isTestingOllama = false
+    @State private var ollamaTestFeedback: (success: Bool, message: String)? = nil
     
     // 监控目录状态
     @State private var monitoredDirectories: [MonitoredDirectory] = []
@@ -54,6 +69,7 @@ struct SettingsView: View {
     @State private var launchAtLoginError: String? = nil
     
     var onHotKeyChange: (Key, NSEvent.ModifierFlags) -> Void
+    var onTranslationHotKeyChange: (Key, NSEvent.ModifierFlags) -> Void = { _, _ in }
     var closeSettings: () -> Void
     
     private let availableKeys: [Key] = [
@@ -80,6 +96,8 @@ struct SettingsView: View {
                     snippetsSettingsView
                 case .hotkey:
                     hotkeySettingsView
+                case .translation:
+                    translationSettingsView
                 case .general:
                     generalSettingsView
                 }
@@ -87,10 +105,13 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(16)
         }
-        .frame(width: 540, height: 510)
+        .frame(width: 580, height: 530)
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear {
             loadSavedHotkey()
+            loadSavedTranslationHotkey()
+            ollamaEndpointInput = translationService.endpoint
+            ollamaModelInput = translationService.model
             refreshFolderInfo()
             loadCustomSnippets()
             checkLaunchAtLoginStatus()
@@ -128,7 +149,7 @@ struct SettingsView: View {
                             Text(tab.rawValue)
                                 .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .regular))
                         }
-                        .padding(.horizontal, 11)
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
@@ -539,112 +560,298 @@ struct SettingsView: View {
     // MARK: - Tab 3: 全局快捷键
     
     private var hotkeySettingsView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                // 卡片 1: 全局激活主面板
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "command")
+                            .foregroundColor(.accentColor)
+                        Text("全局呼出主面板快捷键")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("当前快捷键:")
+                                .font(.system(size: 11))
+                            Text(getHotkeyDescription(key: selectedKey, modifiers: selectedModifiers))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.accentColor.opacity(0.15))
+                                .foregroundColor(.accentColor)
+                                .cornerRadius(5)
+                                .font(.system(.body, design: .monospaced).weight(.bold))
+                            
+                            Spacer()
+                            
+                            Button(action: { startRecording(isTranslation: false) }) {
+                                HStack(spacing: 4) {
+                                    if isRecordingMain {
+                                        Image(systemName: "waveform")
+                                        Text("请按下组合键...")
+                                            .foregroundColor(.orange)
+                                    } else {
+                                        Image(systemName: "record.circle")
+                                        Text("录制")
+                                    }
+                                }
+                                .font(.system(size: 11))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(isRecordingMain ? Color.orange.opacity(0.2) : Color.blue.opacity(0.15))
+                                .cornerRadius(5)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        Divider()
+                        
+                        HStack {
+                            Text("主按键:")
+                                .font(.system(size: 11))
+                            Picker("", selection: $selectedKey) {
+                                ForEach(availableKeys, id: \.self) { key in
+                                    Text(getKeyDisplayName(key)).tag(key)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(width: 110)
+                            
+                            Spacer()
+                            
+                            Text("修饰键:")
+                                .font(.system(size: 11))
+                            HStack(spacing: 8) {
+                                Toggle("⌘ Cmd", isOn: Binding(
+                                    get: { selectedModifiers.contains(.command) },
+                                    set: { if $0 { selectedModifiers.insert(.command) } else { selectedModifiers.remove(.command) } }
+                                ))
+                                Toggle("⌥ Opt", isOn: Binding(
+                                    get: { selectedModifiers.contains(.option) },
+                                    set: { if $0 { selectedModifiers.insert(.option) } else { selectedModifiers.remove(.option) } }
+                                ))
+                                Toggle("⌃ Ctrl", isOn: Binding(
+                                    get: { selectedModifiers.contains(.control) },
+                                    set: { if $0 { selectedModifiers.insert(.control) } else { selectedModifiers.remove(.control) } }
+                                ))
+                                Toggle("⇧ Shift", isOn: Binding(
+                                    get: { selectedModifiers.contains(.shift) },
+                                    set: { if $0 { selectedModifiers.insert(.shift) } else { selectedModifiers.remove(.shift) } }
+                                ))
+                            }
+                            .font(.system(size: 10))
+                        }
+                    }
+                    .padding(10)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.15), lineWidth: 1))
+                }
+                
+                // 卡片 2: 剪贴板快速翻译
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "character.bubble.fill")
+                            .foregroundColor(.purple)
+                        Text("剪贴板即时翻译快捷键 (Ollama 本地模型)")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("当前快捷键:")
+                                .font(.system(size: 11))
+                            Text(getHotkeyDescription(key: selectedTranslationKey, modifiers: selectedTranslationModifiers))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.purple.opacity(0.15))
+                                .foregroundColor(.purple)
+                                .cornerRadius(5)
+                                .font(.system(.body, design: .monospaced).weight(.bold))
+                            
+                            Spacer()
+                            
+                            Button(action: { startRecording(isTranslation: true) }) {
+                                HStack(spacing: 4) {
+                                    if isRecordingTranslation {
+                                        Image(systemName: "waveform")
+                                        Text("请按下组合键...")
+                                            .foregroundColor(.orange)
+                                    } else {
+                                        Image(systemName: "record.circle")
+                                        Text("录制")
+                                    }
+                                }
+                                .font(.system(size: 11))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(isRecordingTranslation ? Color.orange.opacity(0.2) : Color.purple.opacity(0.15))
+                                .cornerRadius(5)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        Divider()
+                        
+                        HStack {
+                            Text("主按键:")
+                                .font(.system(size: 11))
+                            Picker("", selection: $selectedTranslationKey) {
+                                ForEach(availableKeys, id: \.self) { key in
+                                    Text(getKeyDisplayName(key)).tag(key)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(width: 110)
+                            
+                            Spacer()
+                            
+                            Text("修饰键:")
+                                .font(.system(size: 11))
+                            HStack(spacing: 8) {
+                                Toggle("⌘ Cmd", isOn: Binding(
+                                    get: { selectedTranslationModifiers.contains(.command) },
+                                    set: { if $0 { selectedTranslationModifiers.insert(.command) } else { selectedTranslationModifiers.remove(.command) } }
+                                ))
+                                Toggle("⌥ Opt", isOn: Binding(
+                                    get: { selectedTranslationModifiers.contains(.option) },
+                                    set: { if $0 { selectedTranslationModifiers.insert(.option) } else { selectedTranslationModifiers.remove(.option) } }
+                                ))
+                                Toggle("⌃ Ctrl", isOn: Binding(
+                                    get: { selectedTranslationModifiers.contains(.control) },
+                                    set: { if $0 { selectedTranslationModifiers.insert(.control) } else { selectedTranslationModifiers.remove(.control) } }
+                                ))
+                                Toggle("⇧ Shift", isOn: Binding(
+                                    get: { selectedTranslationModifiers.contains(.shift) },
+                                    set: { if $0 { selectedTranslationModifiers.insert(.shift) } else { selectedTranslationModifiers.remove(.shift) } }
+                                ))
+                            }
+                            .font(.system(size: 10))
+                        }
+                    }
+                    .padding(10)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.15), lineWidth: 1))
+                }
+                
+                HStack {
+                    Text("提示: 默认主面板 ⌃⌘Space，剪贴板翻译 ⌃⌥T")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Button("应用所有快捷键设置") {
+                        applyAllHotkeys()
+                        closeSettings()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(selectedModifiers.isEmpty || selectedTranslationModifiers.isEmpty)
+                }
+                .padding(.top, 4)
+            }
+            .padding(.trailing, 2)
+        }
+    }
+    
+    // MARK: - Tab 4: AI 翻译设置
+    
+    private var translationSettingsView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("全局激活快捷键")
+            Text("本地 Ollama 翻译模型配置")
                 .font(.system(size: 14, weight: .semibold))
             
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("当前快捷键:")
-                        .font(.system(size: 12))
-                    Text(getHotkeyDescription())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.accentColor.opacity(0.15))
+                // 模型卡片说明
+                HStack(spacing: 10) {
+                    Image(systemName: "cpu.fill")
+                        .font(.system(size: 20))
                         .foregroundColor(.accentColor)
-                        .cornerRadius(6)
-                        .font(.system(.body, design: .monospaced).weight(.bold))
-                }
-                
-                HStack {
-                    Text("键盘快捷录制:")
-                        .font(.system(size: 12))
-                    Button(action: startRecording) {
-                        HStack(spacing: 4) {
-                            if isRecording {
-                                Image(systemName: "waveform")
-                                Text("请直接按下键盘组合键...")
-                                    .foregroundColor(.orange)
-                            } else {
-                                Image(systemName: "record.circle")
-                                Text("点击开始录制")
-                            }
-                        }
-                        .font(.system(size: 12))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(isRecording ? Color.orange.opacity(0.2) : Color.blue.opacity(0.15))
-                        .cornerRadius(6)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("腾讯混元翻译模型 (Tencent-HY-MT 1.5)")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("当前配置模型: \(translationService.model) ，针对中英文互译进行了深度优化，离线高品质极速翻译。")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
                     }
-                    .buttonStyle(.plain)
+                    Spacer()
                 }
+                .padding(10)
+                .background(Color.accentColor.opacity(0.1))
+                .cornerRadius(8)
                 
-                if !recordedKeyEvent.isEmpty {
-                    HStack {
-                        Text("已录制:")
-                            .font(.system(size: 12))
-                        Text(recordedKeyEvent)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.green.opacity(0.2))
-                            .cornerRadius(6)
-                            .font(.system(.body, design: .monospaced))
-                    }
-                }
-                
-                Divider()
-                
+                // 表单
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("手动配置按键与修饰键")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                    
-                    HStack {
-                        Text("主按键:")
-                            .font(.system(size: 12))
-                        Picker("", selection: $selectedKey) {
-                            ForEach(availableKeys, id: \.self) { key in
-                                Text(getKeyDisplayName(key)).tag(key)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 140)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Ollama API 基础地址:")
+                            .font(.system(size: 11, weight: .medium))
+                        TextField("http://127.0.0.1:11434", text: $ollamaEndpointInput)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
                     }
                     
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("修饰键:")
-                            .font(.system(size: 12))
-                        HStack(spacing: 16) {
-                            Toggle("⌘ Command", isOn: Binding(
-                                get: { selectedModifiers.contains(.command) },
-                                set: { isOn in
-                                    if isOn { selectedModifiers.insert(.command) } else { selectedModifiers.remove(.command) }
-                                }
-                            ))
-                            Toggle("⌥ Option", isOn: Binding(
-                                get: { selectedModifiers.contains(.option) },
-                                set: { isOn in
-                                    if isOn { selectedModifiers.insert(.option) } else { selectedModifiers.remove(.option) }
-                                }
-                            ))
-                            Toggle("⌃ Control", isOn: Binding(
-                                get: { selectedModifiers.contains(.control) },
-                                set: { isOn in
-                                    if isOn { selectedModifiers.insert(.control) } else { selectedModifiers.remove(.control) }
-                                }
-                            ))
-                            Toggle("⇧ Shift", isOn: Binding(
-                                get: { selectedModifiers.contains(.shift) },
-                                set: { isOn in
-                                    if isOn { selectedModifiers.insert(.shift) } else { selectedModifiers.remove(.shift) }
-                                }
-                            ))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("模型名称:")
+                            .font(.system(size: 11, weight: .medium))
+                        TextField("MedAIBase/Tencent-HY-MT1.5:1.8b", text: $ollamaModelInput)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+                }
+                
+                HStack(spacing: 8) {
+                    Button(action: testOllamaConnection) {
+                        HStack(spacing: 4) {
+                            if isTestingOllama {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(width: 12, height: 12)
+                            } else {
+                                Image(systemName: "network")
+                            }
+                            Text(isTestingOllama ? "正在测试..." : "测试连接与模型")
                         }
                         .font(.system(size: 11))
                     }
+                    .buttonStyle(.bordered)
+                    .disabled(isTestingOllama)
+                    
+                    Button("恢复默认设置") {
+                        ollamaEndpointInput = OllamaTranslationService.defaultEndpoint
+                        ollamaModelInput = OllamaTranslationService.defaultModel
+                        saveOllamaSettings()
+                    }
+                    .font(.system(size: 11))
+                    .buttonStyle(.plain)
+                    .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    Button("测试翻译窗口") {
+                        saveOllamaSettings()
+                        TranslationWindowController.shared.showTranslation()
+                    }
+                    .font(.system(size: 11))
+                    .buttonStyle(.bordered)
+                }
+                
+                if let feedback = ollamaTestFeedback {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: feedback.success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundColor(feedback.success ? .green : .red)
+                            .font(.system(size: 12))
+                        Text(feedback.message)
+                            .font(.system(size: 10))
+                            .foregroundColor(feedback.success ? .green : .red)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background((feedback.success ? Color.green : Color.red).opacity(0.1))
+                    .cornerRadius(6)
                 }
             }
-            .padding(14)
+            .padding(12)
             .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
             .cornerRadius(10)
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.18), lineWidth: 1))
@@ -652,26 +859,49 @@ struct SettingsView: View {
             Spacer()
             
             HStack {
+                Text("复制任意文字后按下翻译快捷键 (默认 ⌃ ⌥ T) 即可呼出翻译悬浮窗。")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
                 Spacer()
-                Button("应用快捷键设置") {
-                    applyHotkey()
-                    closeSettings()
+                Button("保存模型设置") {
+                    saveOllamaSettings()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(selectedModifiers.isEmpty)
             }
+        }
+    }
+    
+    private func testOllamaConnection() {
+        saveOllamaSettings()
+        isTestingOllama = true
+        ollamaTestFeedback = nil
+        
+        translationService.testConnection { success, message in
+            isTestingOllama = false
+            ollamaTestFeedback = (success: success, message: message)
+        }
+    }
+    
+    private func saveOllamaSettings() {
+        let ep = ollamaEndpointInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let md = ollamaModelInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !ep.isEmpty {
+            translationService.endpoint = ep
+        }
+        if !md.isEmpty {
+            translationService.model = md
         }
     }
     
     // MARK: - 快捷键辅助方法
     
-    private func getHotkeyDescription() -> String {
+    private func getHotkeyDescription(key: Key, modifiers: NSEvent.ModifierFlags) -> String {
         var components: [String] = []
-        if selectedModifiers.contains(.control) { components.append("⌃") }
-        if selectedModifiers.contains(.option) { components.append("⌥") }
-        if selectedModifiers.contains(.shift) { components.append("⇧") }
-        if selectedModifiers.contains(.command) { components.append("⌘") }
-        components.append(getKeyDisplayName(selectedKey))
+        if modifiers.contains(.control) { components.append("⌃") }
+        if modifiers.contains(.option) { components.append("⌥") }
+        if modifiers.contains(.shift) { components.append("⇧") }
+        if modifiers.contains(.command) { components.append("⌘") }
+        components.append(getKeyDisplayName(key))
         return components.joined(separator: " + ")
     }
     
@@ -733,33 +963,38 @@ struct SettingsView: View {
         }
     }
     
-    private func startRecording() {
-        isRecording = true
-        recordedKeyEvent = ""
+    private func startRecording(isTranslation: Bool) {
+        if isTranslation {
+            isRecordingTranslation = true
+            isRecordingMain = false
+            recordedTranslationKeyEvent = ""
+        } else {
+            isRecordingMain = true
+            isRecordingTranslation = false
+            recordedKeyEvent = ""
+        }
         
         NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { event in
-            if isRecording {
-                handleKeyEvent(event)
+            if self.isRecordingMain || self.isRecordingTranslation {
+                self.handleKeyEvent(event)
             }
         }
         
         NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
-            if isRecording {
-                handleKeyEvent(event)
+            if self.isRecordingMain || self.isRecordingTranslation {
+                self.handleKeyEvent(event)
                 return nil
             }
             return event
         }
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-            if isRecording {
-                stopRecording()
-            }
+            self.stopRecording()
         }
     }
     
     private func handleKeyEvent(_ event: NSEvent) {
-        guard isRecording else { return }
+        guard isRecordingMain || isRecordingTranslation else { return }
         
         var modifiers: NSEvent.ModifierFlags = []
         if event.modifierFlags.contains(.control) { modifiers.insert(.control) }
@@ -769,16 +1004,23 @@ struct SettingsView: View {
         
         if let key = keyCodeToKey(event.keyCode) {
             DispatchQueue.main.async {
-                self.selectedKey = key
-                self.selectedModifiers = modifiers
-                self.recordedKeyEvent = self.getHotkeyDescription()
+                if self.isRecordingTranslation {
+                    self.selectedTranslationKey = key
+                    self.selectedTranslationModifiers = modifiers
+                    self.recordedTranslationKeyEvent = self.getHotkeyDescription(key: key, modifiers: modifiers)
+                } else {
+                    self.selectedKey = key
+                    self.selectedModifiers = modifiers
+                    self.recordedKeyEvent = self.getHotkeyDescription(key: key, modifiers: modifiers)
+                }
                 self.stopRecording()
             }
         }
     }
     
     private func stopRecording() {
-        isRecording = false
+        isRecordingMain = false
+        isRecordingTranslation = false
     }
     
     private func keyCodeToKey(_ keyCode: UInt16) -> Key? {
@@ -851,10 +1093,36 @@ struct SettingsView: View {
         }
     }
     
+    private func loadSavedTranslationHotkey() {
+        let defaultKey: Key = .t
+        let defaultModifiers: NSEvent.ModifierFlags = [.control, .option]
+        
+        selectedTranslationKey = defaultKey
+        selectedTranslationModifiers = defaultModifiers
+        
+        if let keyRawValue = UserDefaults.standard.object(forKey: "translation_hotkey_key") as? UInt16,
+           let key = keyCodeToKey(keyRawValue) {
+            selectedTranslationKey = key
+        }
+        
+        let modifierFlags = UserDefaults.standard.integer(forKey: "translation_hotkey_modifiers")
+        if modifierFlags != 0 {
+            selectedTranslationModifiers = NSEvent.ModifierFlags(rawValue: UInt(modifierFlags))
+        }
+    }
+    
     private func applyHotkey() {
         UserDefaults.standard.set(getKeyCode(selectedKey), forKey: "hotkey_key")
         UserDefaults.standard.set(selectedModifiers.rawValue, forKey: "hotkey_modifiers")
         onHotKeyChange(selectedKey, selectedModifiers)
+    }
+    
+    private func applyAllHotkeys() {
+        applyHotkey()
+        
+        UserDefaults.standard.set(getKeyCode(selectedTranslationKey), forKey: "translation_hotkey_key")
+        UserDefaults.standard.set(selectedTranslationModifiers.rawValue, forKey: "translation_hotkey_modifiers")
+        onTranslationHotKeyChange(selectedTranslationKey, selectedTranslationModifiers)
     }
     
     private func getKeyCode(_ key: Key) -> UInt16 {

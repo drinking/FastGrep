@@ -15,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     
     var hotKey: HotKey!
+    var translationHotKey: HotKey!
     var popover: NSPopover!
     var settingsPopover: NSPopover!
     var clipboardPopover: NSPopover!
@@ -43,6 +44,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsView = SettingsView(
             onHotKeyChange: { key, modifiers in
                 self.updateHotKey(key: key, modifiers: modifiers)
+            },
+            onTranslationHotKeyChange: { key, modifiers in
+                self.updateTranslationHotKey(key: key, modifiers: modifiers)
             },
             closeSettings: {
                 self.settingsPopover.performClose(nil)
@@ -88,6 +92,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Load saved hotkey or use default
         setupHotKey()
+        setupTranslationHotKey()
     }
     
     @objc func togglePopover(_ sender: AnyObject?) {
@@ -120,6 +125,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(withTitle: "打开 FastGrep", action: #selector(menuItemAction(_:)), keyEquivalent: "o")
         menu.addItem(withTitle: "剪贴板历史", action: #selector(menuItemAction(_:)), keyEquivalent: "c")
+        menu.addItem(withTitle: "剪贴板快速翻译", action: #selector(menuItemAction(_:)), keyEquivalent: "t")
         menu.addItem(withTitle: "偏好设置...", action: #selector(menuItemAction(_:)), keyEquivalent: ",")
         menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "关于 FastGrep", action: #selector(menuItemAction(_:)), keyEquivalent: "")
@@ -136,6 +142,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "剪贴板历史":
             showClipboardHistoryPopover()
+        case "剪贴板快速翻译":
+            showTranslationWindow()
         case "偏好设置...":
             showSettingsPopover()
         case "关于 FastGrep":
@@ -221,6 +229,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if let button = self.statusBarItem.button {
                 self.showMainView(button)
             }
+        })
+    }
+    
+    func showTranslationWindow(text: String? = nil) {
+        TranslationWindowController.shared.showTranslation(initialText: text)
+    }
+    
+    func setupTranslationHotKey() {
+        // Default: ⌃ ⌥ T (Control + Option + T)
+        let defaultKey: Key = .t
+        let defaultModifiers: NSEvent.ModifierFlags = [.control, .option]
+        
+        var key = defaultKey
+        var modifiers = defaultModifiers
+        
+        if let keyRawValue = UserDefaults.standard.object(forKey: "translation_hotkey_key") as? UInt16 {
+            key = keyCodeToKey(keyRawValue) ?? defaultKey
+        }
+        
+        let modifierFlags = UserDefaults.standard.integer(forKey: "translation_hotkey_modifiers")
+        if modifierFlags != 0 {
+            modifiers = NSEvent.ModifierFlags(rawValue: UInt(modifierFlags))
+        }
+        
+        updateTranslationHotKey(key: key, modifiers: modifiers)
+    }
+    
+    func updateTranslationHotKey(key: Key, modifiers: NSEvent.ModifierFlags) {
+        translationHotKey = nil
+        translationHotKey = HotKey(key: key, modifiers: modifiers, keyDownHandler: { [weak self] in
+            self?.showTranslationWindow()
         })
     }
     

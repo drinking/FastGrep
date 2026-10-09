@@ -22,6 +22,8 @@
 		459A279523AA910B003D50EC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 459A279423AA910B003D50EC /* Assets.xcassets */; };
 		459A279823AA910B003D50EC /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 459A279723AA910B003D50EC /* Preview Assets.xcassets */; };
 		459A279B23AA910B003D50EC /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 459A279923AA910B003D50EC /* Main.storyboard */; };
+		A10000022BA93D3F0061A72E /* OllamaTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012BA93D3F0061A72E /* OllamaTranslationService.swift */; };
+		A10000042BA93D3F0061A72E /* TranslationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000032BA93D3F0061A72E /* TranslationView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +43,8 @@
 		459A279A23AA910B003D50EC /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		459A279C23AA910B003D50EC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		459A279D23AA910B003D50EC /* FastGrep.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FastGrep.entitlements; sourceTree = "<group>"; };
+		A10000012BA93D3F0061A72E /* OllamaTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaTranslationService.swift; sourceTree = "<group>"; };
+		A10000032BA93D3F0061A72E /* TranslationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -90,6 +94,8 @@
 				459A279623AA910B003D50EC /* Preview Content */,
 				446169512BA93D3F0061A72E /* request.swift */,
 				44B097E12BAC3ED900DB4205 /* ListItemView.swift */,
+				A10000012BA93D3F0061A72E /* OllamaTranslationService.swift */,
+				A10000032BA93D3F0061A72E /* TranslationView.swift */,
 			);
 			path = FastGrep;
 			sourceTree = "<group>";
@@ -191,6 +197,8 @@
 				459A279123AA910B003D50EC /* AppDelegate.swift in Sources */,
 				446169592BAA5C230061A72E /* dbstore.swift in Sources */,
 				446169522BA93D3F0061A72E /* request.swift in Sources */,
+				A10000022BA93D3F0061A72E /* OllamaTranslationService.swift in Sources */,
+				A10000042BA93D3F0061A72E /* TranslationView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

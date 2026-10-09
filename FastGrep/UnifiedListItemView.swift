@@ -803,6 +803,22 @@ struct DetailPreviewView: View {
                             .help("在访达中定位并打开该文件所在目录 (⌘Return)")
                         }
                         
+                        // 翻译按钮
+                        Button(action: {
+                            TranslationWindowController.shared.showTranslation(initialText: item.fullContent)
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "character.bubble")
+                                    .font(.system(size: 10))
+                                Text("翻译")
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.bordered)
+                        .help("使用本地 Ollama 模型翻译此内容")
+                        
                         // 复制按钮
                         Button(action: onCopy) {
                             HStack(spacing: 3) {

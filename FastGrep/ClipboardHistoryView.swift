@@ -369,6 +369,18 @@ struct ClipboardItemRowView: View {
                     .buttonStyle(.plain)
                     .help(item.isFavorite ? "取消收藏" : "添加收藏")
                     
+                    // 翻译按钮
+                    if item.type == .text || item.type == .url {
+                        Button(action: {
+                            TranslationWindowController.shared.showTranslation(initialText: item.content)
+                        }) {
+                            Image(systemName: "character.bubble")
+                                .foregroundColor(.purple)
+                        }
+                        .buttonStyle(.plain)
+                        .help("使用本地 Ollama 模型翻译")
+                    }
+                    
                     // 复制按钮
                     Button(action: onCopy) {
                         Image(systemName: "doc.on.doc")
